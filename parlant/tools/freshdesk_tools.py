@@ -10,14 +10,13 @@ FRESHDESK_API_KEY = os.environ.get("FRESHDESK_API_KEY")
 
 
 @p.tool
-async def get_ticket(context: p.ToolContext) -> p.ToolResult:
+async def get_ticket(context: p.ToolContext, ticket_id: str) -> p.ToolResult:
     """
-    Retrieves the details of a specific Freshdesk ticket.
+    Retrieves basic details of a Freshdesk ticket (metadata only, no description).
 
     Args:
         ticket_id (str): The ID of the ticket to retrieve.
     """
-    ticket_id = context.inputs.get("ticket_id")
 
     if not FRESHDESK_DOMAIN or not FRESHDESK_API_KEY:
         return p.ToolResult(
@@ -31,10 +30,130 @@ async def get_ticket(context: p.ToolContext) -> p.ToolResult:
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, auth=auth)
-            response.raise_for_status()  # Raise an exception for bad status codes
+            response.raise_for_status()
             ticket_data = response.json()
+            
+            # Return only metadata, no large text fields
+            basic_data = {
+                "id": ticket_data.get("id"),
+                "subject": ticket_data.get("subject"),
+                "status": ticket_data.get("status"),
+                "priority": ticket_data.get("priority"),
+                "type": ticket_data.get("type"),
+                "tags": ticket_data.get("tags", []),
+                "custom_fields": ticket_data.get("custom_fields", {}),
+                "created_at": ticket_data.get("created_at"),
+                "updated_at": ticket_data.get("updated_at"),
+            }
+            
             return p.ToolResult(
-                ticket_data, metadata={"summary": f"Fetched ticket details for {ticket_id}"}
+                basic_data, metadata={"summary": f"Fetched basic ticket info for {ticket_id}"}
+            )
+        except httpx.HTTPStatusError as e:
+            return p.ToolResult(
+                {
+                    "error": f"Failed to fetch ticket: {e.response.status_code}",
+                    "details": e.response.text,
+                },
+                metadata={"summary": f"Error fetching ticket {ticket_id}"},
+            )
+        except httpx.RequestError as e:
+            return p.ToolResult(
+                {"error": f"An error occurred while requesting {e.request.url!r}."},
+                metadata={"summary": f"Error fetching ticket {ticket_id}"},
+            )
+
+
+@p.tool
+async def get_ticket_description(context: p.ToolContext, ticket_id: str) -> p.ToolResult:
+    """
+    Retrieves the description/content of a Freshdesk ticket.
+
+    Args:
+        ticket_id (str): The ID of the ticket to retrieve.
+    """
+
+    if not FRESHDESK_DOMAIN or not FRESHDESK_API_KEY:
+        return p.ToolResult(
+            {"error": "Freshdesk credentials not configured."},
+            metadata={"summary": "Error: Freshdesk credentials not configured."},
+        )
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}"
+    auth = (FRESHDESK_API_KEY, "X")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, auth=auth)
+            response.raise_for_status()
+            ticket_data = response.json()
+            
+            # Return only description fields
+            description_data = {
+                "ticket_id": ticket_data.get("id"),
+                "description": ticket_data.get("description", ""),
+                "description_text": ticket_data.get("description_text", ""),
+            }
+            
+            return p.ToolResult(
+                description_data, metadata={"summary": f"Fetched ticket description for {ticket_id}"}
+            )
+        except httpx.HTTPStatusError as e:
+            return p.ToolResult(
+                {
+                    "error": f"Failed to fetch ticket: {e.response.status_code}",
+                    "details": e.response.text,
+                },
+                metadata={"summary": f"Error fetching ticket {ticket_id}"},
+            )
+        except httpx.RequestError as e:
+            return p.ToolResult(
+                {"error": f"An error occurred while requesting {e.request.url!r}."},
+                metadata={"summary": f"Error fetching ticket {ticket_id}"},
+            )
+
+
+@p.tool
+async def get_ticket_conversations(context: p.ToolContext, ticket_id: str) -> p.ToolResult:
+    """
+    Retrieves the conversation history (notes and replies) for a Freshdesk ticket.
+
+    Args:
+        ticket_id (str): The ID of the ticket to retrieve conversations for.
+    """
+
+    if not FRESHDESK_DOMAIN or not FRESHDESK_API_KEY:
+        return p.ToolResult(
+            {"error": "Freshdesk credentials not configured."},
+            metadata={"summary": "Error: Freshdesk credentials not configured."},
+        )
+
+    url = f"https://{FRESHDESK_DOMAIN}/api/v2/tickets/{ticket_id}/conversations"
+    auth = (FRESHDESK_API_KEY, "X")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, auth=auth)
+            response.raise_for_status()
+            conversations = response.json()
+            
+            # Summarize conversations to keep under size limit
+            # Focus on private notes which contain booking info
+            conversation_summary = []
+            for conv in conversations[:10]:  # Limit to 10 most recent
+                # Keep more text for private notes (they have booking info)
+                char_limit = 3000 if conv.get("private") else 500
+                conversation_summary.append({
+                    "id": conv.get("id"),
+                    "body_text": conv.get("body_text", "")[:char_limit],
+                    "incoming": conv.get("incoming"),
+                    "private": conv.get("private"),
+                    "created_at": conv.get("created_at"),
+                })
+            
+            return p.ToolResult(
+                {"ticket_id": ticket_id, "conversations": conversation_summary},
+                metadata={"summary": f"Fetched {len(conversation_summary)} conversations for ticket {ticket_id}"}
             )
         except httpx.HTTPStatusError as e:
             return p.ToolResult(
@@ -51,7 +170,7 @@ async def get_ticket(context: p.ToolContext) -> p.ToolResult:
             )
 
 @p.tool
-async def add_note(context: p.ToolContext) -> p.ToolResult:
+async def add_note(context: p.ToolContext, ticket_id: str, note: str) -> p.ToolResult:
     """
     Adds a private note to a Freshdesk ticket.
 
@@ -59,8 +178,6 @@ async def add_note(context: p.ToolContext) -> p.ToolResult:
         ticket_id (str): The ID of the ticket to add the note to.
         note (str): The content of the note.
     """
-    ticket_id = context.inputs.get("ticket_id")
-    note = context.inputs.get("note")
 
     if not FRESHDESK_DOMAIN or not FRESHDESK_API_KEY:
         return p.ToolResult(
@@ -95,7 +212,13 @@ async def add_note(context: p.ToolContext) -> p.ToolResult:
             )
 
 @p.tool
-async def update_ticket(context: p.ToolContext) -> p.ToolResult:
+async def update_ticket(
+    context: p.ToolContext,
+    ticket_id: str,
+    status: int = None,
+    priority: int = None,
+    tags: list = None
+) -> p.ToolResult:
     """
     Updates the status, priority, and/or tags of a Freshdesk ticket.
 
@@ -105,10 +228,6 @@ async def update_ticket(context: p.ToolContext) -> p.ToolResult:
         priority (int, optional): The new priority of the ticket.
         tags (list, optional): A list of tags to add to the ticket.
     """
-    ticket_id = context.inputs.get("ticket_id")
-    status = context.inputs.get("status")
-    priority = context.inputs.get("priority")
-    tags = context.inputs.get("tags")
 
     if not FRESHDESK_DOMAIN or not FRESHDESK_API_KEY:
         return p.ToolResult(

@@ -26,11 +26,16 @@ services:
     container_name: parlant-server
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       POSTGRES_DB: ${POSTGRES_DB:-ranjayDB}
       POSTGRES_USER: ${POSTGRES_USER:-ranjay.kumar}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ranjay}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      FRESHDESK_DOMAIN: ${FRESHDESK_DOMAIN}
+      FRESHDESK_API_KEY: ${FRESHDESK_API_KEY}
+      LAKERA_API_KEY: ${LAKERA_API_KEY}
+      PARKWHIZ_API_KEY: ${PARKWHIZ_API_KEY}
     ports:
       - "8800:8800"
     volumes:
