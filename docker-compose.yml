@@ -3,16 +3,16 @@ services:
     image: postgres:15
     container_name: parlant-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ranjayDB}
-      POSTGRES_USER: ${POSTGRES_USER:-ranjay.kumar}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ranjay}
+      POSTGRES_DB: ${POSTGRES_DB:-WhizDB}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-whiz}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ranjay.kumar}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -25,19 +25,41 @@ services:
       dockerfile: Dockerfile
     container_name: parlant-server
     environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      POSTGRES_DB: ${POSTGRES_DB:-ranjayDB}
-      POSTGRES_USER: ${POSTGRES_USER:-ranjay.kumar}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ranjay}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
+      POSTGRES_DB: ${POSTGRES_DB:-WhizDB}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-whiz}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       FRESHDESK_DOMAIN: ${FRESHDESK_DOMAIN}
       FRESHDESK_API_KEY: ${FRESHDESK_API_KEY}
       LAKERA_API_KEY: ${LAKERA_API_KEY}
-      PARKWHIZ_API_KEY: ${PARKWHIZ_API_KEY}
+      PARKWHIZ_ENV: ${PARKWHIZ_ENV:-sandbox}
+      PARKWHIZ_SANDBOX_URL: ${PARKWHIZ_SANDBOX_URL}
+      PARKWHIZ_PRODUCTION_URL: ${PARKWHIZ_PRODUCTION_URL}
+      PARKWHIZ_CLIENT_ID: ${PARKWHIZ_CLIENT_ID}
+      PARKWHIZ_CLIENT_SECRET: ${PARKWHIZ_CLIENT_SECRET}
+      PARKWHIZ_SCOPE: ${PARKWHIZ_SCOPE:-partner}
+      PARKWHIZ_TIMEOUT: ${PARKWHIZ_TIMEOUT:-5}
+      PARKWHIZ_MAX_RETRIES: ${PARKWHIZ_MAX_RETRIES:-3}
+      PARKWHIZ_CACHE_TTL: ${PARKWHIZ_CACHE_TTL:-120}
+      PARKWHIZ_DUPLICATE_DETECTION_ENABLED: ${PARKWHIZ_DUPLICATE_DETECTION_ENABLED:-true}
+      WEBHOOK_ENABLED: ${WEBHOOK_ENABLED:-true}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      WEBHOOK_PORT: ${WEBHOOK_PORT:-8801}
+      WEBHOOK_PATH: ${WEBHOOK_PATH:-/webhook/freshdesk}
+      WEBHOOK_EVENTS: ${WEBHOOK_EVENTS:-ticket_created,ticket_updated}
+      WEBHOOK_LOG_LEVEL: ${WEBHOOK_LOG_LEVEL:-INFO}
+      WEBHOOK_RATE_LIMIT: ${WEBHOOK_RATE_LIMIT:-100}
+      WEBHOOK_RATE_LIMIT_WINDOW: ${WEBHOOK_RATE_LIMIT_WINDOW:-60}
+      WEBHOOK_DEDUPLICATION_WINDOW: ${WEBHOOK_DEDUPLICATION_WINDOW:-60}
     ports:
       - "8800:8800"
+      - "8801:8801"
     volumes:
       - ./parlant:/app/app_tools
       - ./tests:/app/tests
