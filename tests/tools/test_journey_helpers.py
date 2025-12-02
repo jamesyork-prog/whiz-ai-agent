@@ -1,7 +1,7 @@
 
 import pytest
-from unittest.mock import Mock
-from parlant.tools.journey_helpers import extract_booking_info_from_note, triage_ticket
+from unittest.mock import Mock, AsyncMock, patch
+from app_tools.tools.journey_helpers import extract_booking_info_from_note, triage_ticket
 
 
 @pytest.mark.asyncio
@@ -66,18 +66,38 @@ async def test_triage_ticket_approved():
         "booking_info": {
             "booking_id": "PW-123456",
             "amount": 45.00,
-            "date": "2025-11-15"
+            "event_date": "2025-11-15"
         },
-        "refund_policy": "Refunds are approved for facility malfunctions."
+        "ticket_notes": ""
     }
     
-    result = await triage_ticket(context)
+    # Mock DecisionMaker to return an Approved decision
+    mock_decision = {
+        "decision": "Approved",
+        "reasoning": "Facility malfunction - gate was broken",
+        "policy_applied": "Facility Issues Policy",
+        "confidence": "high",
+        "cancellation_reason": "Amenity missing",
+        "booking_info_found": True,
+        "method_used": "rules",
+        "processing_time_ms": 150
+    }
     
-    # Verify result structure
-    assert "decision" in result.data
-    assert result.data["decision"] in ["Approved", "Denied", "Needs Human Review"]
-    assert "reasoning" in result.data
-    assert result.metadata["summary"].startswith("Triage decision")
+    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+        mock_instance = MockDecisionMaker.return_value
+        mock_instance.make_decision = AsyncMock(return_value=mock_decision)
+        
+        result = await triage_ticket(context)
+        
+        # Verify result structure
+        assert "decision" in result.data
+        assert result.data["decision"] == "Approved"
+        assert "reasoning" in result.data
+        assert "cancellation_reason" in result.data
+        assert result.data["cancellation_reason"] == "Amenity missing"
+        assert "method_used" in result.data
+        assert "processing_time_ms" in result.data
+        assert result.metadata["summary"].startswith("Decision:")
 
 
 @pytest.mark.asyncio
@@ -93,16 +113,34 @@ async def test_triage_ticket_denied():
         "booking_info": {
             "booking_id": "PW-789012",
             "amount": 30.00,
-            "date": "2025-11-20"
+            "event_date": "2025-11-20"
         },
-        "refund_policy": "No refunds for change of mind within 24 hours of event."
+        "ticket_notes": ""
     }
     
-    result = await triage_ticket(context)
+    # Mock DecisionMaker to return a Denied decision
+    mock_decision = {
+        "decision": "Denied",
+        "reasoning": "Cancellation too close to event date - less than 3 days before event",
+        "policy_applied": "Pre-arrival Cancellation Policy",
+        "confidence": "high",
+        "cancellation_reason": None,
+        "booking_info_found": True,
+        "method_used": "rules",
+        "processing_time_ms": 120
+    }
     
-    # Verify result structure
-    assert "decision" in result.data
-    assert result.data["decision"] in ["Approved", "Denied", "Needs Human Review"]
+    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+        mock_instance = MockDecisionMaker.return_value
+        mock_instance.make_decision = AsyncMock(return_value=mock_decision)
+        
+        result = await triage_ticket(context)
+        
+        # Verify result structure
+        assert "decision" in result.data
+        assert result.data["decision"] == "Denied"
+        assert result.data["cancellation_reason"] is None  # No reason for denied
+        assert "method_used" in result.data
 
 
 @pytest.mark.asyncio
@@ -116,13 +154,31 @@ async def test_triage_ticket_needs_review():
             "description": "Very complex situation with multiple factors."
         },
         "booking_info": None,  # Missing booking info
-        "refund_policy": "Standard policy applies."
+        "ticket_notes": "Very complex situation with multiple factors."
     }
     
-    result = await triage_ticket(context)
+    # Mock DecisionMaker to return Needs Human Review
+    mock_decision = {
+        "decision": "Needs Human Review",
+        "reasoning": "Unable to extract complete booking information from ticket",
+        "policy_applied": "Data Validation - Incomplete Information",
+        "confidence": "low",
+        "cancellation_reason": None,
+        "booking_info_found": False,
+        "method_used": "extraction_failed",
+        "processing_time_ms": 200
+    }
     
-    # Should still return a valid decision
-    assert "decision" in result.data
+    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+        mock_instance = MockDecisionMaker.return_value
+        mock_instance.make_decision = AsyncMock(return_value=mock_decision)
+        
+        result = await triage_ticket(context)
+        
+        # Should still return a valid decision
+        assert "decision" in result.data
+        assert result.data["decision"] == "Needs Human Review"
+        assert result.data["booking_info_found"] is False
 
 
 @pytest.mark.asyncio
@@ -169,13 +225,34 @@ async def test_triage_ticket_with_policy_context():
             "subject": "Refund request",
             "description": "Event was cancelled"
         },
-        "booking_info": {"booking_id": "PW-333333", "amount": 50.00},
-        "refund_policy": "Full refund for event cancellations."
+        "booking_info": {
+            "booking_id": "PW-333333",
+            "amount": 50.00,
+            "event_date": "2025-12-01"
+        },
+        "ticket_notes": "Event was cancelled"
     }
     
-    result = await triage_ticket(context)
+    # Mock DecisionMaker to return Approved with LLM analysis
+    mock_decision = {
+        "decision": "Approved",
+        "reasoning": "Event cancellation - full refund per policy",
+        "policy_applied": "Event Cancellation Policy",
+        "confidence": "high",
+        "cancellation_reason": "PW cancellation",
+        "booking_info_found": True,
+        "method_used": "hybrid",
+        "processing_time_ms": 350
+    }
     
-    # Verify the policy was considered
-    assert result.data is not None
-    assert "decision" in result.data
-    assert "reasoning" in result.data
+    with patch('app_tools.tools.journey_helpers.DecisionMaker') as MockDecisionMaker:
+        mock_instance = MockDecisionMaker.return_value
+        mock_instance.make_decision = AsyncMock(return_value=mock_decision)
+        
+        result = await triage_ticket(context)
+        
+        # Verify the policy was considered
+        assert result.data is not None
+        assert "decision" in result.data
+        assert "reasoning" in result.data
+        assert result.data["method_used"] == "hybrid"

@@ -1,5 +1,8 @@
 
 import parlant.sdk as p
+from .booking_extractor import BookingExtractor
+from .decision_maker import DecisionMaker
+from .freshdesk_tools import add_note, update_ticket
 
 
 @p.tool
@@ -47,31 +50,58 @@ async def extract_booking_info_from_note(context: p.ToolContext) -> p.ToolResult
             metadata={"summary": "Booking info: not found (empty notes)"}
         )
     
-    # The LLM will process this tool and extract the booking information
-    # from the ticket_notes based on the instructions in the docstring
-    return p.ToolResult(
-        data={
-            "booking_info": None,  # LLM will populate this
-            "confidence": "pending",
-            "found_in": "notes",
-            "raw_notes": ticket_notes
-        },
-        metadata={"summary": "Booking info extraction requested"}
-    )
+    # Use the optimized BookingExtractor with pattern-based extraction
+    try:
+        extractor = BookingExtractor(use_pattern_fallback=True)
+        result = await extractor.extract_booking_info(ticket_notes)
+        
+        # Format result for Parlant
+        return p.ToolResult(
+            data={
+                "booking_info": result["booking_info"] if result["found"] else None,
+                "confidence": result["confidence"],
+                "found_in": "notes",
+                "extraction_method": result["extraction_method"],
+                "found": result["found"]
+            },
+            metadata={
+                "summary": f"Booking info: {'found' if result['found'] else 'not found'} "
+                          f"(method: {result['extraction_method']}, confidence: {result['confidence']})"
+            }
+        )
+    except Exception as e:
+        # Fallback if extraction fails
+        return p.ToolResult(
+            data={
+                "booking_info": None,
+                "confidence": "error",
+                "found_in": "none",
+                "error": str(e)
+            },
+            metadata={"summary": f"Booking info extraction failed: {str(e)}"}
+        )
 
 
 @p.tool
 async def triage_ticket(context: p.ToolContext) -> p.ToolResult:
     """
-    Analyzes all available information to make a refund decision.
+    Analyzes all available information to make a refund decision using the hybrid
+    rule-based and LLM-powered decision-making system.
     
-    This is the main "thinking tool" that synthesizes ticket data, booking information,
-    and refund policy to determine the appropriate action.
+    This tool orchestrates the complete decision flow:
+    1. Uses pre-extracted booking info if available, otherwise extracts from ticket notes
+    2. Applies deterministic business rules for clear-cut cases
+    3. Uses LLM analysis for complex or ambiguous cases
+    4. Maps to appropriate ParkWhiz cancellation reason for approved refunds
     
     Args:
-        ticket_data (dict): Complete Freshdesk ticket information
-        booking_info (dict|null): Extracted ParkWhiz booking information
-        refund_policy (str): Relevant refund policy text from the retriever
+        ticket_data (dict): Complete Freshdesk ticket information including:
+            - id (str): Ticket ID
+            - subject (str): Ticket subject
+            - description (str): Ticket description
+            - status (str): Current status
+        booking_info (dict|null): Optional pre-extracted ParkWhiz booking information
+        ticket_notes (str): Optional raw text from ticket notes/conversations
     
     Returns:
         ToolResult with:
@@ -79,27 +109,14 @@ async def triage_ticket(context: p.ToolContext) -> p.ToolResult:
         - reasoning (str): Clear explanation of why this decision was made
         - policy_applied (str): Which specific policy rule was applied
         - confidence (str): Confidence level in the decision (high/medium/low)
-        - recommended_action (str): Specific next step to take
-    
-    Instructions for the LLM:
-        You are an expert refund analyst. Analyze ALL provided information:
-        
-        1. Review the ticket details (subject, description, custom fields)
-        2. Examine the booking information (if available)
-        3. Apply the refund policy rules
-        
-        Decision Criteria:
-        - APPROVED: Clear policy match, all required info present, straightforward case
-        - DENIED: Clearly violates policy, well-documented reason
-        - NEEDS HUMAN REVIEW: Missing critical info, edge case, policy ambiguity,
-          security concerns, high value transaction, or customer escalation
-        
-        Always err on the side of "Needs Human Review" if you're uncertain.
-        Provide clear, customer-friendly reasoning that can be shared with the customer.
+        - cancellation_reason (str|null): ParkWhiz cancellation reason (if Approved)
+        - booking_info_found (bool): Whether booking info was successfully extracted
+        - method_used (str): Decision method ("rules", "llm", or "hybrid")
+        - processing_time_ms (int): Time taken to make the decision
     """
     ticket_data = context.inputs.get("ticket_data", {})
     booking_info = context.inputs.get("booking_info")
-    refund_policy = context.inputs.get("refund_policy", "")
+    ticket_notes = context.inputs.get("ticket_notes", "")
     
     ticket_id = ticket_data.get("id", "unknown")
     
@@ -109,24 +126,236 @@ async def triage_ticket(context: p.ToolContext) -> p.ToolResult:
             data={
                 "decision": "Needs Human Review",
                 "reasoning": "Insufficient ticket data to make an automated decision",
-                "policy_applied": "None",
+                "policy_applied": "Data Validation - No Ticket Data",
                 "confidence": "none",
-                "recommended_action": "escalate_to_human"
+                "cancellation_reason": None,
+                "booking_info_found": False,
+                "method_used": "validation_failed",
+                "processing_time_ms": 0
             },
             metadata={"summary": "Triage decision: Needs Human Review (no data)"}
         )
     
-    # The LLM will process this tool and make the triage decision
-    # based on the instructions in the docstring and the provided data
+    # Use DecisionMaker to orchestrate the decision process
+    try:
+        decision_maker = DecisionMaker()
+        result = await decision_maker.make_decision(
+            ticket_data=ticket_data,
+            ticket_notes=ticket_notes,
+            booking_info=booking_info
+        )
+        
+        # Format summary for metadata
+        decision = result.get("decision", "Unknown")
+        method = result.get("method_used", "unknown")
+        confidence = result.get("confidence", "unknown")
+        processing_time = result.get("processing_time_ms", 0)
+        
+        summary = (
+            f"Decision: {decision} "
+            f"(method: {method}, confidence: {confidence}, time: {processing_time}ms)"
+        )
+        
+        # Add cancellation reason to summary if Approved
+        if decision == "Approved" and result.get("cancellation_reason"):
+            summary += f" - Reason: {result['cancellation_reason']}"
+        
+        return p.ToolResult(
+            data=result,
+            metadata={"summary": summary}
+        )
+        
+    except Exception as e:
+        # Handle unexpected errors gracefully
+        return p.ToolResult(
+            data={
+                "decision": "Needs Human Review",
+                "reasoning": f"Error during decision-making process: {str(e)}. Human review required.",
+                "policy_applied": "System Error",
+                "confidence": "none",
+                "cancellation_reason": None,
+                "booking_info_found": False,
+                "method_used": "error",
+                "processing_time_ms": 0,
+                "error": str(e)
+            },
+            metadata={"summary": f"Triage decision failed: {str(e)}"}
+        )
+
+
+
+@p.tool
+async def document_decision(context: p.ToolContext) -> p.ToolResult:
+    """
+    Documents the refund decision in Freshdesk with a private note and tag.
+    
+    MVP Scope: This tool documents the decision but does NOT process the refund
+    via ParkWhiz API. This allows the team to verify decision accuracy before
+    enabling full automation.
+    
+    The tool:
+    1. Formats a comprehensive private note with decision details
+    2. Includes ParkWhiz cancellation reason for Approved decisions
+    3. Adds the note to the Freshdesk ticket
+    4. Tags the ticket with "Processed by Whiz Agent"
+    
+    Args:
+        ticket_id (str): The Freshdesk ticket ID to document
+        decision_result (dict): The decision data from triage_ticket containing:
+            - decision (str): "Approved", "Denied", or "Needs Human Review"
+            - reasoning (str): Explanation of the decision
+            - policy_applied (str): Which policy rule was applied
+            - confidence (str): Confidence level (high/medium/low)
+            - cancellation_reason (str|null): ParkWhiz cancellation reason (if Approved)
+            - method_used (str): Decision method used
+            - processing_time_ms (int): Processing time
+    
+    Returns:
+        ToolResult with:
+        - documented (bool): Whether the decision was successfully documented
+        - ticket_id (str): The ticket ID that was updated
+        - note_added (bool): Whether the private note was added
+        - tag_added (bool): Whether the tag was added
+    """
+    ticket_id = context.inputs.get("ticket_id")
+    decision_result = context.inputs.get("decision_result", {})
+    
+    # Validate inputs
+    if not ticket_id:
+        return p.ToolResult(
+            data={
+                "documented": False,
+                "error": "No ticket_id provided"
+            },
+            metadata={"summary": "Error: No ticket_id provided"}
+        )
+    
+    if not decision_result:
+        return p.ToolResult(
+            data={
+                "documented": False,
+                "error": "No decision_result provided"
+            },
+            metadata={"summary": "Error: No decision_result provided"}
+        )
+    
+    # Extract decision details
+    decision = decision_result.get("decision", "Unknown")
+    reasoning = decision_result.get("reasoning", "No reasoning provided")
+    policy_applied = decision_result.get("policy_applied", "No policy specified")
+    confidence = decision_result.get("confidence", "unknown")
+    cancellation_reason = decision_result.get("cancellation_reason")
+    method_used = decision_result.get("method_used", "unknown")
+    processing_time_ms = decision_result.get("processing_time_ms", 0)
+    
+    # Format the private note
+    note_lines = [
+        f"**AGENT DECISION: {decision}**",
+        "",
+        "**Reasoning:**",
+        reasoning,
+        "",
+        "**Policy Applied:**",
+        policy_applied,
+    ]
+    
+    # Add cancellation reason for Approved decisions
+    if decision == "Approved" and cancellation_reason:
+        note_lines.extend([
+            "",
+            "**ParkWhiz Cancellation Reason:**",
+            cancellation_reason,
+        ])
+    
+    # Add metadata
+    note_lines.extend([
+        "",
+        f"**Confidence Level:** {confidence}",
+        f"**Method Used:** {method_used}",
+        f"**Processing Time:** {processing_time_ms}ms",
+        "",
+        "---",
+        "This decision was made by the Whiz Agent. Please review before processing the refund.",
+        "",
+        "[Report AI Inaccuracy](https://forms.gle/1NMxGcYeLkZnM4956)",
+    ])
+    
+    note_body = "\n".join(note_lines)
+    
+    # Add the private note to the ticket
+    try:
+        note_result = await add_note(
+            context=context,
+            ticket_id=ticket_id,
+            note=note_body
+        )
+        
+        note_added = "error" not in note_result.data
+        
+        if not note_added:
+            return p.ToolResult(
+                data={
+                    "documented": False,
+                    "ticket_id": ticket_id,
+                    "note_added": False,
+                    "tag_added": False,
+                    "error": f"Failed to add note: {note_result.data.get('error')}"
+                },
+                metadata={"summary": f"Error: Failed to add note to ticket {ticket_id}"}
+            )
+    except Exception as e:
+        return p.ToolResult(
+            data={
+                "documented": False,
+                "ticket_id": ticket_id,
+                "note_added": False,
+                "tag_added": False,
+                "error": f"Exception adding note: {str(e)}"
+            },
+            metadata={"summary": f"Error: Exception adding note to ticket {ticket_id}"}
+        )
+    
+    # Add the "Processed by Whiz Agent" tag
+    try:
+        tag_result = await update_ticket(
+            context=context,
+            ticket_id=ticket_id,
+            tags=["Processed by Whiz Agent"]
+        )
+        
+        tag_added = "error" not in tag_result.data
+        
+        if not tag_added:
+            return p.ToolResult(
+                data={
+                    "documented": True,  # Note was added successfully
+                    "ticket_id": ticket_id,
+                    "note_added": True,
+                    "tag_added": False,
+                    "warning": f"Note added but failed to add tag: {tag_result.data.get('error')}"
+                },
+                metadata={"summary": f"Documented {decision} decision for ticket {ticket_id} (tag failed)"}
+            )
+    except Exception as e:
+        return p.ToolResult(
+            data={
+                "documented": True,  # Note was added successfully
+                "ticket_id": ticket_id,
+                "note_added": True,
+                "tag_added": False,
+                "warning": f"Note added but exception adding tag: {str(e)}"
+            },
+            metadata={"summary": f"Documented {decision} decision for ticket {ticket_id} (tag failed)"}
+        )
+    
+    # Success - both note and tag added
     return p.ToolResult(
         data={
-            "decision": "Needs Human Review",  # LLM will determine the actual decision
-            "reasoning": "Analyzing ticket information...",
-            "policy_applied": refund_policy if refund_policy else "No policy provided",
-            "confidence": "pending",
-            "recommended_action": "analyze",
+            "documented": True,
             "ticket_id": ticket_id,
-            "has_booking_info": booking_info is not None
+            "note_added": True,
+            "tag_added": True,
+            "decision": decision
         },
-        metadata={"summary": f"Triage decision requested for ticket {ticket_id}"}
+        metadata={"summary": f"Documented {decision} decision for ticket {ticket_id}"}
     )
