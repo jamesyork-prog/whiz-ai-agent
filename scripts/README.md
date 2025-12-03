@@ -34,6 +34,7 @@ Example: `whizdb_backup_20250119_143022.sql`
 - ✅ Automatic timestamp generation
 - ✅ Creates backup directory if it doesn't exist
 - ✅ Works both on host and inside Docker containers
+- ✅ Automatically detects credentials from the running container
 - ✅ Includes `--clean` and `--if-exists` flags for safe restoration
 - ✅ Displays backup size and location
 - ✅ Shows restore command for convenience
@@ -121,4 +122,85 @@ find backups/ -name "whizdb_backup_*.sql" -mtime +30 -delete
 **Keep only the 5 most recent backups:**
 ```bash
 ls -t backups/whizdb_backup_*.sql | tail -n +6 | xargs rm -f
+```
+
+
+## Refund Guide Processing Script
+
+### Location
+`scripts/process_refund_guide.py`
+
+### Purpose
+Automates the conversion of raw refund guide text files into structured JSON for use by the Parlant AI agent's policy-based decision making system.
+
+### Usage
+
+```bash
+python scripts/process_refund_guide.py
+```
+
+### Input Files
+- `parlant/context/raw/ops_refund_guide_1_10.txt`
+- `parlant/context/raw/ops_refund_guide_11_23.txt`
+
+### Output Files
+- `parlant/context/processed/refund_guide.json` - Structured policy guidance
+- `parlant/context/processed/refund_rules.json` - Business rules extracted from guide
+
+### Features
+- Reads all `.txt` files in the raw directory
+- Cleans text (removes page breaks, fixes OCR errors)
+- Extracts section titles and content
+- Generates structured JSON with proper formatting
+- Extracts business rules automatically
+- Overwrites existing processed files
+
+### When to Run
+Run this script whenever the operations refund guide is updated:
+- New policy changes
+- Updated procedures
+- Additional refund scenarios
+- Rule modifications
+
+### Example Output
+
+```
+=== Refund Guide Processing Script ===
+
+Found 2 raw file(s):
+  - ops_refund_guide_1_10.txt
+  - ops_refund_guide_11_23.txt
+
+Processing refund guide...
+  Extracted 15 sections:
+    - Pre-Arrival
+    - Oversold
+    - No Attendant
+    - Missing Amenity
+    - Poor Experience
+    ...
+
+✓ Saved parlant/context/processed/refund_guide.json
+  Size: 45,231 bytes
+
+Extracting business rules...
+  Extracted 6 rules:
+    - pre_arrival: Approved
+    - oversold_location: Approved
+    - duplicate_booking: Approved
+    - post_event: Denied
+    - fourteen_day_limit: Denied
+    - non_refundable: Denied
+
+✓ Saved parlant/context/processed/refund_rules.json
+  Size: 2,847 bytes
+
+✓ Processing complete!
+```
+
+### After Running
+After processing the guide, restart the Parlant service to reload the updated policies:
+
+```bash
+docker-compose restart parlant
 ```
