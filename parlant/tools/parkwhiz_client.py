@@ -314,7 +314,11 @@ class ParkWhizOAuth2Client:
                     f"API error {response.status_code}: {response.text}"
                 )
             
-            # Parse JSON response
+            # Parse JSON response (handle empty responses for DELETE)
+            if response.status_code == 204 or not response.content:
+                # 204 No Content or empty response - success
+                return {"success": True, "status_code": response.status_code}
+            
             return response.json()
             
         except httpx.TimeoutException as e:
@@ -343,158 +347,71 @@ class ParkWhizOAuth2Client:
             )
             raise ParkWhizError(f"Network error: {e}")
     
-    async def get_customer_bookings(
-        self,
-        customer_email: str,
-        start_date: str,
-        end_date: str,
-    ) -> List[Dict[str, Any]]:
+    async def get_booking_by_id(self, booking_id: str) -> Dict[str, Any]:
         """
-        Get customer bookings within a date range using OAuth2 authentication.
+        Get a single booking by its ID using OAuth2 authentication.
         
-        NOTE: The ParkWhiz API's start_date/end_date parameters don't filter by parking dates.
-        This method fetches all bookings for the customer and filters client-side by start_time.
-        
-        Uses caching to avoid redundant API calls for the same query within the TTL window.
+        This is the ONLY reliable way to retrieve booking details from ParkWhiz API.
+        Email/customer search does not work (see parkwhiz_api_limitations.md).
         
         Args:
-            customer_email: Customer email address
-            start_date: Start date (ISO format: YYYY-MM-DD) - used for client-side filtering
-            end_date: End date (ISO format: YYYY-MM-DD) - used for client-side filtering
+            booking_id: The booking ID to retrieve
         
         Returns:
-            List of booking dictionaries with parking dates in the specified range
+            Booking dictionary with full details
         
         Raises:
+            ParkWhizNotFoundError: Booking not found
             ParkWhizError: API error occurred
         """
-        # Log request with timestamp (Requirement 11.1)
         request_timestamp = datetime.now().isoformat()
         logger.info(
-            f"ParkWhiz API request: get_customer_bookings for {customer_email}",
+            f"ParkWhiz API request: get_booking_by_id {booking_id}",
             extra={
-                "customer_email": customer_email,
-                "start_date": start_date,
-                "end_date": end_date,
+                "booking_id": booking_id,
                 "timestamp": request_timestamp,
-                "operation": "get_customer_bookings",
+                "operation": "get_booking_by_id",
             }
         )
         
-        # Generate cache key
-        cache_key = f"{customer_email}:{start_date}:{end_date}"
-        
-        # Check cache first
-        if cache_key in self._cache:
-            logger.info(
-                f"Cache hit for customer {customer_email}",
-                extra={
-                    "customer_email": customer_email,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "cache_key": cache_key,
-                    "cache_hit": True,
-                }
-            )
-            return self._cache[cache_key]
-        
-        logger.info(
-            f"Cache miss - querying bookings for {customer_email} (OAuth2)",
-            extra={
-                "customer_email": customer_email,
-                "start_date": start_date,
-                "end_date": end_date,
-                "cache_hit": False,
-            }
-        )
-        
-        # Build query parameters (note: start_date/end_date don't work in API, but kept for compatibility)
-        params = {
-            "q": f"customer_email:{customer_email}",
-        }
-        
-        # Track processing time
         start_time = time.time()
         
-        # Make request
-        response = await self._request("GET", "/bookings", params=params)
-        
-        # Calculate processing time (Requirement 11.2)
-        processing_time = time.time() - start_time
-        processing_time_ms = int(processing_time * 1000)
-        
-        # Extract bookings from response
-        # ParkWhiz API returns a list directly, not wrapped in a dict
-        if isinstance(response, list):
-            all_bookings = response
-        else:
-            all_bookings = response.get("bookings", response.get("results", []))
-        
-        # CLIENT-SIDE FILTERING: Filter by parking start_time since API doesn't support it
-        filtered_bookings = []
-        start_dt = datetime.fromisoformat(start_date)
-        end_dt = datetime.fromisoformat(end_date)
-        
-        for booking in all_bookings:
-            start_time_str = booking.get("start_time")
-            if not start_time_str:
-                continue
+        try:
+            response = await self._request("GET", f"/bookings/{booking_id}")
             
-            try:
-                # Parse booking start time
-                booking_start = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                
-                # Check if booking starts within the date range
-                if start_dt.date() <= booking_start.date() <= end_dt.date():
-                    filtered_bookings.append(booking)
-            except (ValueError, TypeError) as e:
-                logger.warning(
-                    f"Invalid start_time format in booking {booking.get('id')}: {e}",
-                    extra={"booking_id": booking.get('id'), "start_time": start_time_str}
-                )
-                continue
-        
-        logger.info(
-            f"Filtered {len(all_bookings)} bookings to {len(filtered_bookings)} in date range",
-            extra={
-                "total_bookings": len(all_bookings),
-                "filtered_bookings": len(filtered_bookings),
-                "start_date": start_date,
-                "end_date": end_date,
-            }
-        )
-        
-        # Store filtered results in cache
-        self._cache[cache_key] = filtered_bookings
-        
-        # Log response with status, booking count, and processing time (Requirement 11.2)
-        logger.info(
-            f"Found {len(filtered_bookings)} bookings for {customer_email} in date range",
-            extra={
-                "booking_count": len(filtered_bookings),
-                "customer_email": customer_email,
-                "cache_key": cache_key,
-                "processing_time_ms": processing_time_ms,
-                "response_status": "success",
-                "cached": True,
-            }
-        )
-        
-        # Performance warning if response exceeds 3 seconds (Requirement 12.2)
-        if processing_time > 3.0:
-            logger.warning(
-                f"Slow API response for get_customer_bookings: {processing_time:.2f}s",
+            processing_time = time.time() - start_time
+            processing_time_ms = int(processing_time * 1000)
+            
+            logger.info(
+                f"Retrieved booking {booking_id}",
                 extra={
-                    "customer_email": customer_email,
-                    "processing_time_seconds": processing_time,
+                    "booking_id": booking_id,
                     "processing_time_ms": processing_time_ms,
-                    "threshold_seconds": 3.0,
-                    "operation": "get_customer_bookings",
+                    "response_status": "success",
                 }
             )
-        
-        return filtered_bookings
-    
+            
+            if processing_time > 3.0:
+                logger.warning(
+                    f"Slow API response for get_booking_by_id: {processing_time:.2f}s",
+                    extra={
+                        "booking_id": booking_id,
+                        "processing_time_seconds": processing_time,
+                        "processing_time_ms": processing_time_ms,
+                        "threshold_seconds": 3.0,
+                        "operation": "get_booking_by_id",
+                    }
+                )
+            
+            return response
+            
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve booking {booking_id}: {e}",
+                extra={"booking_id": booking_id, "error": str(e)}
+            )
+            raise
+
     async def delete_booking(self, booking_id: str) -> Dict[str, Any]:
         """
         Delete (cancel/refund) a booking using OAuth2 authentication.
@@ -523,8 +440,19 @@ class ParkWhizOAuth2Client:
         # Track processing time
         start_time = time.time()
         
-        # Make request
-        response = await self._request("DELETE", f"/bookings/{booking_id}")
+        # Make DELETE request (may return empty response)
+        try:
+            response = await self._request("DELETE", f"/bookings/{booking_id}")
+        except Exception as e:
+            # If it's a JSON decode error on empty response, that's actually success
+            if "Expecting value" in str(e) or "JSONDecodeError" in str(e):
+                logger.info(
+                    f"DELETE request succeeded with empty response (204 No Content) for booking {booking_id}",
+                    extra={"booking_id": booking_id}
+                )
+                response = {"success": True, "booking_id": booking_id, "status": "deleted"}
+            else:
+                raise
         
         # Calculate processing time
         processing_time = time.time() - start_time
