@@ -57,10 +57,14 @@ class ParkWhizValidationError(ParkWhizError):
 
 class ParkWhizOAuth2Client:
     """
-    OAuth2-based client for ParkWhiz API duplicate booking detection.
+    OAuth2-based client for ParkWhiz API.
     
     Uses OAuth2 Client Credentials flow for authentication.
     Automatically manages token lifecycle (generation and refresh).
+    
+    CRITICAL LIMITATION: The ParkWhiz API does NOT support searching bookings
+    by customer email. This client can only retrieve bookings by known booking ID.
+    See planning/parkwhiz_api_limitations.md for details.
     """
     
     def __init__(
@@ -513,31 +517,22 @@ def validate_oauth2_credentials() -> bool:
     Validate that ParkWhiz OAuth2 credentials are configured.
     
     This function should be called at application startup to ensure
-    duplicate booking detection can function properly.
+    the ParkWhiz API client can authenticate properly.
     
     Returns:
-        True if credentials are valid and feature is enabled
-        False if feature is disabled
+        True if credentials are configured, False otherwise
     
     Raises:
-        ParkWhizAuthenticationError: If feature is enabled but credentials are missing
+        ParkWhizAuthenticationError: If credentials are missing
     """
-    # Check if duplicate detection is enabled
-    enabled = os.getenv("PARKWHIZ_DUPLICATE_DETECTION_ENABLED", "true").lower() == "true"
-    
-    if not enabled:
-        logger.info("ParkWhiz duplicate detection is disabled")
-        return False
-    
     # Validate credentials
     client_id = os.getenv("PARKWHIZ_CLIENT_ID")
     client_secret = os.getenv("PARKWHIZ_CLIENT_SECRET")
     
     if not client_id or not client_secret:
         logger.critical(
-            "ParkWhiz duplicate detection is enabled but OAuth2 credentials are not configured. "
-            "Set PARKWHIZ_CLIENT_ID and PARKWHIZ_CLIENT_SECRET environment variables, "
-            "or set PARKWHIZ_DUPLICATE_DETECTION_ENABLED=false to disable the feature."
+            "ParkWhiz OAuth2 credentials not configured. "
+            "Set PARKWHIZ_CLIENT_ID and PARKWHIZ_CLIENT_SECRET environment variables."
         )
         raise ParkWhizAuthenticationError(
             "ParkWhiz OAuth2 credentials not configured. "

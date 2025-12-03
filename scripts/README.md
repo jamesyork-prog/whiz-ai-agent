@@ -144,16 +144,16 @@ python scripts/process_refund_guide.py
 - `parlant/context/raw/ops_refund_guide_11_23.txt`
 
 ### Output Files
-- `parlant/context/processed/refund_guide.json` - Structured policy guidance
-- `parlant/context/processed/refund_rules.json` - Business rules extracted from guide
+- `parlant/context/processed/refund_guide.json` - Structured policy guidance for LLM context
 
 ### Features
 - Reads all `.txt` files in the raw directory
 - Cleans text (removes page breaks, fixes OCR errors)
 - Extracts section titles and content
 - Generates structured JSON with proper formatting
-- Extracts business rules automatically
-- Overwrites existing processed files
+- Overwrites existing processed file
+
+**Note:** Business rules are hardcoded in `parlant/tools/rule_engine.py`, not extracted from this guide. This JSON file provides context for LLM analysis only.
 
 ### When to Run
 Run this script whenever the operations refund guide is updated:
@@ -182,18 +182,6 @@ Processing refund guide...
 
 ✓ Saved parlant/context/processed/refund_guide.json
   Size: 45,231 bytes
-
-Extracting business rules...
-  Extracted 6 rules:
-    - pre_arrival: Approved
-    - oversold_location: Approved
-    - duplicate_booking: Approved
-    - post_event: Denied
-    - fourteen_day_limit: Denied
-    - non_refundable: Denied
-
-✓ Saved parlant/context/processed/refund_rules.json
-  Size: 2,847 bytes
 
 ✓ Processing complete!
 ```
