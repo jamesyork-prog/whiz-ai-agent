@@ -4,7 +4,8 @@ from datetime import datetime
 from .freshdesk_tools import get_ticket, get_ticket_description, get_ticket_conversations
 from .lakera_security_tool import check_content
 from .journey_helpers import extract_booking_info_from_note, triage_ticket
-from .detect_duplicate_bookings_tool import detect_duplicate_bookings
+# NOTE: detect_duplicate_bookings tool is NON-FUNCTIONAL due to ParkWhiz API limitations
+# from .detect_duplicate_bookings_tool import detect_duplicate_bookings  # DISABLED - API cannot search by email
 # from .parkwhiz_tools import get_customer_orders  # TODO: Re-enable after implementing parkwhiz_tools
 from .structured_logger import (
     configure_structured_logging,
@@ -17,7 +18,8 @@ from .structured_logger import (
 # Booking verification imports
 from .zapier_failure_detector import ZapierFailureDetector
 from .customer_info_extractor import CustomerInfoExtractor
-from .booking_verifier import ParkWhizBookingVerifier
+# NOTE: booking_verifier module removed - ParkWhiz API cannot search by email
+# from .booking_verifier import ParkWhizBookingVerifier
 from .decision_guard import DecisionGuard
 from .verification_note_generator import VerificationNoteGenerator
 
@@ -264,80 +266,26 @@ async def process_ticket_end_to_end(context: p.ToolContext, ticket_id: str) -> p
                 }
                 results["steps_completed"].append("Extracted customer information")
                 
+                # NOTE: Booking verification disabled - ParkWhiz API cannot search by email
                 # Only attempt verification if customer info is complete
-                if customer_info.is_complete():
-                    # Verify booking using ParkWhiz API
-                    verifier = ParkWhizBookingVerifier()
-                    verification_result = await verifier.verify_booking(customer_info)
-                    
-                    logger.info(
-                        f"Booking verification completed for ticket {ticket_id}",
-                        extra={
-                            "ticket_id": ticket_id,
-                            "success": verification_result.success,
-                            "should_escalate": verification_result.should_escalate,
-                            "api_calls": verification_result.api_calls_made,
-                            "processing_time_ms": verification_result.processing_time_ms
-                        }
-                    )
-                    
-                    results["verification_result"] = {
-                        "success": verification_result.success,
-                        "should_escalate": verification_result.should_escalate,
-                        "failure_reason": verification_result.failure_reason,
-                        "api_calls_made": verification_result.api_calls_made,
-                        "processing_time_ms": verification_result.processing_time_ms
+                # if customer_info.is_complete():
+                #     # Verify booking using ParkWhiz API
+                #     verifier = ParkWhizBookingVerifier()
+                #     verification_result = await verifier.verify_booking(customer_info)
+                #     ...
+                # else:
+                #     # Customer info incomplete - cannot verify
+                #     ...
+                
+                # Skip verification - log that it's disabled
+                logger.info(
+                    f"Booking verification skipped for ticket {ticket_id} - feature disabled due to API limitations",
+                    extra={
+                        "ticket_id": ticket_id,
+                        "reason": "ParkWhiz API cannot search bookings by customer email"
                     }
-                    
-                    if verification_result.success and verification_result.verified_booking:
-                        verified_booking = verification_result.verified_booking
-                        results["verified_booking"] = {
-                            "booking_id": verified_booking.booking_id,
-                            "pass_used": verified_booking.pass_used,
-                            "pass_usage_status": verified_booking.pass_usage_status,
-                            "match_confidence": verified_booking.match_confidence
-                        }
-                        results["steps_completed"].append("Successfully verified booking via ParkWhiz API")
-                        
-                        # Generate and add verification note
-                        note_generator = VerificationNoteGenerator()
-                        verification_note = note_generator.generate_verified_note(
-                            verified_booking,
-                            customer_info
-                        )
-                        
-                        from .freshdesk_tools import add_note
-                        log_tool_execution(logger, ticket_id, "add_note", "verification_note")
-                        await add_note(context, ticket_id, verification_note)
-                        results["steps_completed"].append("Added verification note to ticket")
-                        
-                    else:
-                        # Verification failed - add failure note
-                        results["steps_completed"].append("Booking verification failed")
-                        
-                        note_generator = VerificationNoteGenerator()
-                        failure_note = note_generator.generate_verification_failed_note(
-                            customer_info,
-                            verification_result.failure_reason or "Unknown error"
-                        )
-                        
-                        from .freshdesk_tools import add_note
-                        log_tool_execution(logger, ticket_id, "add_note", "verification_failure_note")
-                        await add_note(context, ticket_id, failure_note)
-                        results["steps_completed"].append("Added verification failure note to ticket")
-                        
-                else:
-                    # Customer info incomplete - cannot verify
-                    logger.warning(
-                        f"Customer info incomplete for ticket {ticket_id} - cannot verify booking",
-                        extra={
-                            "ticket_id": ticket_id,
-                            "has_email": bool(customer_info.email),
-                            "has_arrival": bool(customer_info.arrival_date),
-                            "has_exit": bool(customer_info.exit_date)
-                        }
-                    )
-                    results["steps_completed"].append("Customer info incomplete - cannot verify booking")
+                )
+                results["steps_completed"].append("Booking verification skipped (API limitation)")
                     
             except Exception as e:
                 logger.error(
@@ -356,62 +304,31 @@ async def process_ticket_end_to_end(context: p.ToolContext, ticket_id: str) -> p
         else:
             results["booking_info_source"] = "ticket_notes"
         
-        # Step 6.5: Check for "paid again" claims and run duplicate detection
+        # Step 6.5: Check for "paid again" / duplicate claims
+        # NOTE: Duplicate detection tool is NON-FUNCTIONAL due to ParkWhiz API limitations
+        # All duplicate claims must be escalated to human review
         duplicate_detection_result = None
         if _is_paid_again_claim(notes_text):
-            logger.info(f"Detected 'paid again' claim in ticket {ticket_id}")
-            results["steps_completed"].append("Detected 'paid again' claim")
+            logger.info(f"Detected duplicate/paid-again claim in ticket {ticket_id} - escalating to human review")
+            results["steps_completed"].append("Detected duplicate claim - escalating per API limitation")
             
-            # Extract booking info for duplicate detection
-            booking_info = results["booking_info"].get("booking_info", {})
-            customer_email = booking_info.get("customer_email")
-            event_date = booking_info.get("event_date")
-            location_name = booking_info.get("location")
-            
-            # Only run duplicate detection if we have required info
-            if customer_email and event_date:
-                logger.info(f"Running duplicate detection for {customer_email} on {event_date}")
-                log_tool_execution(logger, ticket_id, "detect_duplicate_bookings")
-                
-                try:
-                    duplicate_detection_result = await detect_duplicate_bookings(
-                        context=context,
-                        customer_email=customer_email,
-                        event_date=event_date,
-                        location_name=location_name
-                    )
-                    results["duplicate_detection"] = duplicate_detection_result.data
-                    results["steps_completed"].append("Completed duplicate booking detection")
-                    
-                    log_tool_execution(
-                        logger,
-                        ticket_id,
-                        "detect_duplicate_bookings",
-                        success=True,
-                        result=duplicate_detection_result.data.get("action_taken")
-                    )
-                except Exception as e:
-                    logger.error(f"Duplicate detection failed: {e}", exc_info=True)
-                    log_tool_execution(
-                        logger,
-                        ticket_id,
-                        "detect_duplicate_bookings",
-                        success=False,
-                        error=str(e)
-                    )
-                    results["duplicate_detection"] = {
-                        "error": str(e),
-                        "action_taken": "escalate"
-                    }
-                    results["steps_completed"].append("Duplicate detection failed - will escalate")
-            else:
-                logger.warning(f"Cannot run duplicate detection - missing required info (email: {bool(customer_email)}, date: {bool(event_date)})")
-                results["duplicate_detection"] = {
-                    "error": "missing_required_info",
+            # Create escalation result (duplicate detection tool cannot work)
+            duplicate_detection_result = type('obj', (object,), {
+                'data': {
                     "action_taken": "escalate",
-                    "explanation": "Cannot detect duplicates without customer email and event date"
+                    "explanation": (
+                        "Customer reports duplicate booking or being charged twice. "
+                        "Duplicate detection requires manual review because the ParkWhiz API "
+                        "does not support searching bookings by customer email. "
+                        "A specialist will review the account to locate both bookings."
+                    ),
+                    "has_duplicates": None,  # Unknown - cannot detect
+                    "api_limitation": True
                 }
-                results["steps_completed"].append("Duplicate detection skipped - missing required info")
+            })()
+            
+            results["duplicate_detection"] = duplicate_detection_result.data
+            results["steps_completed"].append("Duplicate claim flagged for human review")
         
         # Step 7: Make decision based on duplicate detection or triage
         # If duplicate detection was run, use its results for decision
