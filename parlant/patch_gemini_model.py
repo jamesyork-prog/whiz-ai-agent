@@ -13,8 +13,14 @@ from pathlib import Path
 def patch_gemini_service():
     """Patch the Parlant SDK's gemini_service.py file."""
     
-    # Find the gemini_service.py file
-    site_packages = Path("/usr/local/lib/python3.11/site-packages")
+    # Find the site-packages directory dynamically
+    try:
+        import parlant
+        # Get the parent directory of the parlant package
+        site_packages = Path(parlant.__file__).resolve().parents[1]
+    except (ImportError, IndexError):
+        print("❌ Could not dynamically locate the 'parlant' package. Is it installed?")
+        return False
     gemini_service_path = site_packages / "parlant" / "adapters" / "nlp" / "gemini_service.py"
     
     if not gemini_service_path.exists():

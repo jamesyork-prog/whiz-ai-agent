@@ -31,6 +31,8 @@ from app_tools.tools.freshdesk_tools import (
     get_ticket_conversations,
     add_note,
     update_ticket,
+    # booking_verifier,
+    # detect_duplicate_bookings_tool,
 )
 from app_tools.tools.database_logger import log_audit_trail, log_run_metrics, update_customer_context
 from app_tools.tools.lakera_security_tool import check_content
@@ -38,6 +40,8 @@ from app_tools.tools.journey_helpers import extract_booking_info_from_note, tria
 from app_tools.tools.manual_trigger import trigger_ticket_processing
 from app_tools.tools.debug_ticket import debug_ticket_notes
 from app_tools.tools.parkwhiz_client import validate_oauth2_credentials
+# from app_tools.tools.booking_verifier import verify_booking_details
+# from app_tools.tools.detect_duplicate_bookings_tool import detect_duplicate_bookings
 import uuid
 from datetime import datetime
 
@@ -109,6 +113,7 @@ async def create_interactive_processing_journey(agent: p.Agent):
     )
     
     # Fetch ticket metadata first
+    # t1 = await journey.initial_state.transition_to(tool_state=get_ticket)
     t1 = await journey.initial_state.transition_to(tool_state=get_ticket)
     t2 = await t1.target.transition_to(
         chat_state="Ticket metadata retrieved. Fetching full description and continuing analysis.",
@@ -261,6 +266,42 @@ async def create_interactive_processing_journey(agent: p.Agent):
     
     print(f"✓ Created journey: {journey.title}")
 
+# async def create_automated_processing_journey(agent: p.Agent):
+#     """
+#     Automated ticket processing journey for webhook-triggered refunds.
+#     This journey has no chat states and runs silently in the background.
+#     """
+#     journey = await agent.create_journey(
+#         title="Automated Ticket Processing",
+#         conditions=[
+#             "A webhook is received to process a Freshdesk ticket",
+#             "A ticket needs to be processed automatically without user interaction"
+#         ],
+#         description="Processes Freshdesk tickets silently in the background. This journey is triggered by webhooks and performs the complete refund workflow: fetching data, security scanning, extracting booking info, making a triage decision, and updating the ticket without any chat-based feedback.",
+#     )
+    
+#     # This journey uses the process_ticket_end_to_end tool, which encapsulates
+#     # the entire workflow into a single, non-interactive operation.
+    
+#     # Import the consolidated tool
+#     from app_tools.tools.process_ticket_workflow import process_ticket_end_to_end
+    
+#     # Initial state transitions directly to the end-to-end processing tool
+#     t1 = await journey.initial_state.transition_to(tool_state=process_ticket_end_to_end)
+    
+#     # The journey ends after the tool completes. The tool itself handles
+#     # all sub-steps and updates Freshdesk. The final state of the journey
+#     # can simply confirm completion.
+#     await t1.target.transition_to(
+#         chat_state="Automated processing complete. The ticket has been analyzed and updated in Freshdesk.",
+#         # This chat state will not be shown to a user but serves as a final
+#         # confirmation in the journey logs.
+#     )
+    
+#     print(f"✓ Created journey: {journey.title}")
+
+
+
 
 # --- Main Application ---
 async def main():
@@ -313,6 +354,7 @@ async def main():
 
             # --- Register Journeys and Guidelines here ---
             await create_interactive_processing_journey(agent)
+            # await create_automated_processing_journey(agent)
 
             # Add general guidelines
             await agent.create_guideline(

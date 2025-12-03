@@ -106,6 +106,20 @@ class RuleEngine:
         amount = booking_info.get("amount", 0)
         ticket_description = ticket_data.get("description", "").lower()
         
+        # PRIORITY RULE: Check for duplicate claims FIRST (must escalate regardless of timing)
+        # This overrides all other rules because we cannot auto-detect duplicates
+        if self._check_for_duplicate_claim(ticket_data):
+            logger.info("Rule matched: Duplicate Claim. Decision: Needs Human Review (API limitation)")
+            return {
+                "decision": "Needs Human Review",
+                "reasoning": "Customer reports duplicate booking or being charged twice. "
+                            "Duplicate detection requires manual review because the ParkWhiz API "
+                            "does not support searching bookings by customer email. "
+                            "A specialist will review the account to locate both bookings.",
+                "policy_rule": "Duplicate Booking Claim - Requires Manual Review",
+                "confidence": "high"
+            }
+        
         # Rule 1: 7+ days before event → Approve (Pre-Arrival)
         if days_before_event >= 7:
             logger.info(f"Rule matched: Pre-Arrival (7+ days). Decision: Approved")
@@ -131,12 +145,16 @@ class RuleEngine:
                     "confidence": "high"
                 }
             
-            if self._check_for_duplicate(booking_info, ticket_data):
-                logger.info("Rule matched: Duplicate Pass (post-event exception). Decision: Approved")
+            # Check for duplicate claims - escalate even post-event
+            if self._check_for_duplicate_claim(ticket_data):
+                logger.info("Rule matched: Duplicate Claim (post-event). Decision: Needs Human Review")
                 return {
-                    "decision": "Approved",
-                    "reasoning": "Duplicate booking detected. Customer was charged multiple times for the same reservation.",
-                    "policy_rule": "Duplicate Pass",
+                    "decision": "Needs Human Review",
+                    "reasoning": "Customer reports duplicate booking or being charged twice. "
+                                "Duplicate detection requires manual review because the ParkWhiz API "
+                                "does not support searching bookings by customer email. "
+                                "A specialist will review the account to locate both bookings.",
+                    "policy_rule": "Duplicate Booking Claim - Requires Manual Review",
                     "confidence": "high"
                 }
             
@@ -206,15 +224,6 @@ class RuleEngine:
                 "decision": "Approved",
                 "reasoning": "Location was oversold/full. Customer was unable to park despite valid booking.",
                 "policy_rule": "Oversold Location",
-                "confidence": "high"
-            }
-        
-        if self._check_for_duplicate(booking_info, ticket_data):
-            logger.info("Rule matched: Duplicate Pass. Decision: Approved")
-            return {
-                "decision": "Approved",
-                "reasoning": "Duplicate booking detected. Customer was charged multiple times for the same reservation.",
-                "policy_rule": "Duplicate Pass",
                 "confidence": "high"
             }
         
@@ -313,23 +322,34 @@ class RuleEngine:
         ]
         return any(keyword in ticket_description for keyword in oversold_keywords)
     
-    def _check_for_duplicate(self, booking_info: Dict, ticket_data: Dict) -> bool:
+    def _check_for_duplicate_claim(self, ticket_data: Dict) -> bool:
         """
-        Check if this appears to be a duplicate booking.
+        Check if customer is claiming a duplicate booking.
+        
+        NOTE: This method only DETECTS duplicate claims for escalation purposes.
+        Actual duplicate detection and resolution is NON-FUNCTIONAL due to 
+        ParkWhiz API limitations (cannot search bookings by customer email).
+        
+        All duplicate claims must be escalated to human review.
         
         Args:
-            booking_info: Booking information dictionary
             ticket_data: Ticket data dictionary
         
         Returns:
-            True if duplicate indicators found, False otherwise
+            True if duplicate claim detected (triggers escalation), False otherwise
         """
         ticket_description = ticket_data.get("description", "").lower()
+        ticket_subject = ticket_data.get("subject", "").lower()
+        
         duplicate_keywords = [
             "duplicate", "charged twice", "double charge", "two passes",
-            "bought twice", "multiple passes", "same time"
+            "bought twice", "multiple passes", "same time", "two bookings",
+            "charged 2 times", "billed twice", "double booking"
         ]
-        return any(keyword in ticket_description for keyword in duplicate_keywords)
+        
+        # Check both subject and description
+        full_text = f"{ticket_subject} {ticket_description}"
+        return any(keyword in full_text for keyword in duplicate_keywords)
     
     def _check_for_paid_again(self, ticket_description: str) -> bool:
         """

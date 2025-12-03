@@ -26,13 +26,19 @@ wheels/
 .installed.cfg
 *.egg
 
-# Environment
+# Environment & Secrets
 .env
-.env.local
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+secrets/
 
 # Agent ID (generated at runtime)
 agent_id.txt
 parlant/agent_id.txt
+data/agent_id.txt
 
 # Docker
 docker-compose.override.yml
@@ -53,16 +59,28 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+*.sql
+backups/
 
-# Gemini and Warp specific files
+# Personal Development & Planning
+planning/
 GEMINI.md
 WARP.md
+TODO.md
+NOTES.md
 
 # Kiro IDE files
 .kiro/
 
-# Debug scripts and test data
+# Debug & Test Data
 tests/debug/
 data/
-backups/
+testing/
 scripts/webhook_config_output.txt
+test_*.py
+!tests/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
