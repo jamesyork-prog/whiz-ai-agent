@@ -218,7 +218,7 @@ The system is in the MVP (Minimum Viable Product) phase, focusing on decision-ma
 - Identify policy gaps and edge cases
 - Tune confidence thresholds
 
-**Phase 2: ParkWhiz Integration**
+**Phase 2: ParkWhiz Integration (Current)**
 - Implement ParkWhiz refund API calls
 - Add booking cancellation logic
 - Implement refund transaction processing
@@ -304,7 +304,7 @@ Future voice interface providing:
 ```
 Freshdesk Webhook
   ↓
-Webhook Validator (HMAC-SHA256)
+Webhook Validator (OAuth2)
   ↓
 Journey Router → Automated Processing Journey
   ↓
