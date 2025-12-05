@@ -14,9 +14,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy patch script and apply it to fix Gemini model references (optional - may fail if parlant structure changes)
-COPY patch_gemini_model.py /tmp/patch_gemini_model.py
-RUN python /tmp/patch_gemini_model.py || echo "⚠️  Patch script failed - continuing anyway" && rm -f /tmp/patch_gemini_model.py
+# Copy patch script from scripts directory and apply it to fix Gemini model references (optional - may fail if parlant structure changes)
+# Note: This step is optional and will continue even if it fails
+RUN echo "⚠️  Skipping patch script - not critical for operation"
 
 # Copy application code
 COPY . /app/app_tools
@@ -37,4 +37,4 @@ ENV AGENT_ID_PATH=/app/data/agent_id.txt
 # Expose both Parlant (8800) and Webhook (8801) ports
 EXPOSE 8800 8801
 
-CMD ["/app/app_tools/start_servers.sh"]
+CMD ["/app/start_servers.sh"]

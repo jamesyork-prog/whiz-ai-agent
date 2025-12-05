@@ -26,29 +26,40 @@ services:
     image: whiz-agent
     container_name: whiz-agent
     environment:
+      # --- LLM Configuration ---
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
+
+      # --- Database Connection ---
       POSTGRES_DB: ${POSTGRES_DB:-WhizDB}
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-whiz}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+
+      # --- Service Integrations ---
       FRESHDESK_DOMAIN: ${FRESHDESK_DOMAIN}
       FRESHDESK_API_KEY: ${FRESHDESK_API_KEY}
       LAKERA_API_KEY: ${LAKERA_API_KEY}
+
+      # --- ParkWhiz API Configuration ---
       PARKWHIZ_ENV: ${PARKWHIZ_ENV:-sandbox}
       PARKWHIZ_SANDBOX_URL: ${PARKWHIZ_SANDBOX_URL}
       PARKWHIZ_PRODUCTION_URL: ${PARKWHIZ_PRODUCTION_URL}
       PARKWHIZ_CLIENT_ID: ${PARKWHIZ_CLIENT_ID}
       PARKWHIZ_CLIENT_SECRET: ${PARKWHIZ_CLIENT_SECRET}
       PARKWHIZ_SCOPE: ${PARKWHIZ_SCOPE:-partner}
+
+      # --- ParkWhiz Feature & Tuning ---
       PARKWHIZ_TIMEOUT: ${PARKWHIZ_TIMEOUT:-5}
       PARKWHIZ_MAX_RETRIES: ${PARKWHIZ_MAX_RETRIES:-3}
       PARKWHIZ_CACHE_TTL: ${PARKWHIZ_CACHE_TTL:-120}
       PARKWHIZ_DUPLICATE_DETECTION_ENABLED: ${PARKWHIZ_DUPLICATE_DETECTION_ENABLED:-true}
+
+      # --- Webhook Configuration ---
       WEBHOOK_ENABLED: ${WEBHOOK_ENABLED:-true}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       WEBHOOK_PORT: ${WEBHOOK_PORT:-8801}

@@ -27,6 +27,8 @@ DATE_PATTERNS = [
     (r'(\d{4}[-/]\d{2}[-/]\d{2})', '%Y-%m-%d'),
     # US format: 11/15/2025, 11-15-2025
     (r'(\d{1,2}[-/]\d{1,2}[-/]\d{4})', '%m/%d/%Y'),
+    # Written format with day of week: Thursday Dec 04, 2025 (ignore day of week)
+    (r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4})', '%b %d, %Y'),
     # Written format: November 15, 2025
     (r'((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})', '%B %d, %Y'),
     # Short written: Nov 15, 2025
@@ -176,17 +178,33 @@ class PatternExtractor:
         if booking_id:
             booking_info['booking_id'] = booking_id
         
-        # Extract dates
-        dates = self._extract_dates(text_content)
-        if dates:
-            # Try to identify which date is which based on context
-            if len(dates) >= 2:
-                # Assume first date is reservation, second is event
-                booking_info['reservation_date'] = dates[0]
-                booking_info['event_date'] = dates[1]
-            elif len(dates) == 1:
-                # Single date - likely event date
-                booking_info['event_date'] = dates[0]
+        # Extract dates with context-aware labeling
+        # Look for specific labels in Zapier notes
+        booking_created_match = re.search(r'Booking Created:\s*(.+?)(?:\n|$)', text_content, re.IGNORECASE)
+        if booking_created_match:
+            date_str = self._extract_date(booking_created_match.group(1))
+            if date_str:
+                booking_info['reservation_date'] = date_str
+        
+        parking_start_match = re.search(r'Parking Pass Start Time:\s*(.+?)(?:\n|$)', text_content, re.IGNORECASE)
+        if parking_start_match:
+            date_str = self._extract_date(parking_start_match.group(1))
+            if date_str:
+                booking_info['event_date'] = date_str
+        
+        # Fallback: extract all dates if specific labels not found
+        if 'event_date' not in booking_info:
+            dates = self._extract_dates(text_content)
+            if dates:
+                # Try to identify which date is which based on context
+                if len(dates) >= 2:
+                    # Assume first date is reservation, second is event
+                    if 'reservation_date' not in booking_info:
+                        booking_info['reservation_date'] = dates[0]
+                    booking_info['event_date'] = dates[1]
+                elif len(dates) == 1:
+                    # Single date - likely event date
+                    booking_info['event_date'] = dates[0]
         
         # Extract location
         location = self._extract_location(text_content)

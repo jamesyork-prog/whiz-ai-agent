@@ -71,9 +71,9 @@ The system produces three types of decisions:
    WEBHOOK_ENABLED=true
 
    # Database
-   POSTGRES_DB=ranjayDB
-   POSTGRES_USER=ranjay.kumar
-   POSTGRES_PASSWORD=ranjay
+   POSTGRES_DB=WhizDB
+   POSTGRES_USER=admin
+   POSTGRES_PASSWORD=whiz
    ```
 
 3. **Start all services**
@@ -87,7 +87,7 @@ The system produces three types of decisions:
    docker-compose ps
 
    # View logs
-   docker-compose logs -f whiz-agent
+   docker-compose logs -f parlant
    ```
 
 5. **Access the application**
@@ -178,16 +178,16 @@ System: [Retrieves policy documents and explains the rules]
 
 ```bash
 # Run all tests
-docker-compose exec whiz-agent pytest
+docker-compose exec parlant pytest
 
 # Run specific test suite
-docker-compose exec whiz-agent pytest tests/tools/test_booking_extractor.py -v
+docker-compose exec parlant pytest tests/tools/test_booking_extractor.py -v
 
 # Run integration tests
-docker-compose exec whiz-agent pytest tests/integration/ -v
+docker-compose exec parlant pytest tests/integration/ -v
 
 # Run with coverage
-docker-compose exec whiz-agent pytest --cov=app_tools --cov-report=html
+docker-compose exec parlant pytest --cov=app_tools --cov-report=html
 ```
 
 ## Roadmap
@@ -397,9 +397,9 @@ WEBHOOK_EVENTS=ticket_created,ticket_updated
 WEBHOOK_RATE_LIMIT=100  # requests per minute
 
 # Database
-POSTGRES_DB=ranjayDB
-POSTGRES_USER=ranjay.kumar
-POSTGRES_PASSWORD=ranjay
+POSTGRES_DB=WhizDB
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=whiz
 POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 
@@ -453,13 +453,13 @@ View logs for specific services:
 
 ```bash
 # All Whiz Agent logs
-docker-compose logs -f whiz-agent
+docker-compose logs -f parlant
 
 # Decision-making logs
-docker-compose logs whiz-agent | grep -E "BookingExtractor|RuleEngine|LLMAnalyzer|DecisionMaker"
+docker-compose logs parlant | grep -E "BookingExtractor|RuleEngine|LLMAnalyzer|DecisionMaker"
 
 # Webhook logs
-docker-compose logs whiz-agent | grep webhook
+docker-compose logs parlant | grep webhook
 
 # Database logs
 docker-compose logs -f postgres
@@ -497,7 +497,7 @@ curl http://localhost:8801/webhook/health
 curl http://localhost:8800
 
 # Database connection
-docker-compose exec postgres psql -U ranjay.kumar -d ranjayDB -c "SELECT 1;"
+docker-compose exec postgres psql -U admin -d WhizDB -c "SELECT 1;"
 ```
 
 ## Troubleshooting
@@ -536,20 +536,20 @@ docker-compose exec postgres psql -U ranjay.kumar -d ranjayDB -c "SELECT 1;"
 
 ```bash
 # Run tests
-docker-compose exec whiz-agent pytest -v
+docker-compose exec parlant pytest -v
 
 # Check service status
 docker-compose ps
 
 # Restart services
-docker-compose restart whiz-agent
+docker-compose restart parlant
 
 # Clear database and restart
 docker-compose down -v
 docker-compose up -d
 
 # View recent decisions
-docker-compose logs whiz-agent | grep "Decision:" | tail -20
+docker-compose logs parlant | grep "Decision:" | tail -20
 ```
 
 ## Documentation
@@ -572,16 +572,16 @@ Additional resources:
 
 ```bash
 # Run all tests
-docker-compose exec whiz-agent pytest
+docker-compose exec parlant pytest
 
 # Run specific test file
-docker-compose exec whiz-agent pytest tests/tools/test_booking_extractor.py -v
+docker-compose exec parlant pytest tests/tools/test_booking_extractor.py -v
 
 # Run integration tests
-docker-compose exec whiz-agent pytest tests/integration/ -v
+docker-compose exec parlant pytest tests/integration/ -v
 
 # Run with coverage
-docker-compose exec whiz-agent pytest --cov=app_tools --cov-report=html
+docker-compose exec parlant pytest --cov=app_tools --cov-report=html
 ```
 
 ### Adding New Rules
@@ -600,8 +600,8 @@ if booking_info.get("booking_type") == "monthly" and days_before_event >= 3:
 ```
 
 After updating rules:
-1. Restart the service: `docker-compose restart whiz-agent`
-2. Run tests: `docker-compose exec whiz-agent pytest tests/tools/test_rule_engine.py -v`
+1. Restart the service: `docker-compose restart parlant`
+2. Run tests: `docker-compose exec parlant pytest tests/tools/test_rule_engine.py -v`
 
 ### Project Structure
 

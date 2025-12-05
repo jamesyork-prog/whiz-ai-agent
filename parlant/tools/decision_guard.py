@@ -6,10 +6,35 @@ Provides safety checks to prevent automated decisions based on unverified custom
 """
 
 import logging
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
+from dataclasses import dataclass
 
-from app_tools.tools.booking_verifier import VerifiedBooking, BookingVerificationResult
 from app_tools.tools.customer_info_extractor import CustomerInfo
+
+
+# Stub classes for backward compatibility
+# These are no longer used since booking verification happens upstream in Zapier
+@dataclass
+class VerifiedBooking:
+    """Stub for backward compatibility - no longer used."""
+    booking_id: str
+    customer_email: str
+    arrival_date: str
+    exit_date: str
+    location: str
+    pass_used: bool
+    pass_usage_status: str
+    amount_paid: float
+    match_confidence: str
+
+
+@dataclass
+class BookingVerificationResult:
+    """Stub for backward compatibility - no longer used."""
+    success: bool
+    verified_booking: Optional[VerifiedBooking]
+    customer_info: CustomerInfo
+    failure_reason: Optional[str] = None
 
 
 # Configure logging

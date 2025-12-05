@@ -251,17 +251,25 @@ class BookingExtractor:
 1. **Booking ID**: Any reference number like "PW-12345", "509266779", "Booking #123", etc.
 2. **Amount**: Dollar amounts like "$45.00", "45 dollars", etc.
 3. **Reservation Date**: When the booking was made
-4. **Event Date**: When the parking was scheduled for (start date/time)
+4. **Event Date**: When the parking was scheduled for (start date/time) - THIS IS THE MOST CRITICAL FIELD
 5. **Location**: Parking facility name or address
 6. **Booking Type**: "confirmed", "on-demand", "third-party", or "unknown"
 7. **Customer Email**: Email address of the customer
 8. **Cancellation Date**: When the cancellation was requested (if mentioned)
 
+**CRITICAL DATE EXTRACTION RULES:**
+- Look for "Parking Pass Start Time" - this is the event_date
+- Look for "Booking Created" - this is the reservation_date
+- ALWAYS use 4-digit years (e.g., 2025, not 25)
+- Convert dates to ISO format: YYYY-MM-DD (e.g., "Thursday Dec 04, 2025, 12:00 PM" → "2025-12-04")
+- Pay careful attention to the year - if you see "2025", use 2025, NOT 2020
+- If a date includes time (e.g., "12:00 PM"), ignore the time and extract only the date
+
 **Important Instructions:**
 - If multiple bookings are mentioned, extract information for the PRIMARY booking being disputed
 - Set "found" to true if you find at least a booking ID or event date
 - Set "multiple_bookings" to true if more than one booking is referenced
-- Use ISO format (YYYY-MM-DD) for dates when possible
+- Use ISO format (YYYY-MM-DD) for dates - ALWAYS include the full 4-digit year
 - If a field is not found, omit it from the response (don't include null values)
 - For booking_type, infer from context: "confirmed" for advance bookings, "on-demand" for same-day, "third-party" if booked through another platform
 

@@ -162,7 +162,7 @@ class DecisionMaker:
         # Step 3: Apply rule-based logic
         logger.info("Applying rule-based decision logic")
         try:
-            rule_result = self.rule_engine.apply_rules(booking_info, ticket_data)
+            rule_result = await self.rule_engine.apply_rules(booking_info, ticket_data, ticket_notes)
             logger.info(f"Rule-based result: {rule_result.get('decision')} "
                        f"(confidence: {rule_result.get('confidence')})")
         except Exception as e:
@@ -185,7 +185,8 @@ class DecisionMaker:
             }
         
         # Step 4: Decide if LLM analysis is needed
-        method_used = "rules"
+        # Check if rule engine already used LLM (e.g., for vehicle classification)
+        method_used = rule_result.get("method_used", "rules")
         final_decision = rule_result
         
         # If rule-based decision is uncertain or has low confidence, use LLM

@@ -514,14 +514,17 @@ async def handle_freshdesk_webhook(request: Request):
                     activation_result.get("session_id", "unknown")
                 )
             else:
+                error_detail = activation_result.get("error", "Unknown error")
                 logger.error(
                     "Journey activation failed",
                     extra={
                         "ticket_id": ticket_id,
                         "journey_name": journey_name,
-                        "error": activation_result.get("error", "Unknown error")
+                        "error": error_detail
                     }
                 )
+                # Also log to console for visibility
+                print(f"❌ Journey activation failed for ticket {ticket_id}: {error_detail}")
         except Exception as e:
             logger.error(
                 "Journey activation exception",

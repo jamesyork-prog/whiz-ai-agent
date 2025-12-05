@@ -10,7 +10,7 @@ import logging
 from typing import List, Optional
 from html import escape
 
-from app_tools.tools.booking_verifier import VerifiedBooking
+from app_tools.tools.decision_guard import VerifiedBooking
 from app_tools.tools.customer_info_extractor import CustomerInfo
 
 
@@ -52,88 +52,158 @@ class VerificationNoteGenerator:
         # Find discrepancies
         discrepancies = self.highlight_discrepancies(verified_booking, customer_provided)
         
-        # Build HTML note
+        # Build shadcn-style HTML note
+        # Determine badge based on pass usage
+        if verified_booking.pass_used:
+            badge_bg = "#fee2e2"
+            badge_color = "#991b1b"
+            badge_text = "PASS USED"
+        else:
+            badge_bg = "#dcfce7"
+            badge_color = "#166534"
+            badge_text = "PASS NOT USED"
+        
         html_parts = [
-            "<div style='font-family: Arial, sans-serif; line-height: 1.6;'>",
-            "<h3 style='color: #2c5282; margin-bottom: 10px;'>✅ Booking Verification Results</h3>",
-            "<div style='background-color: #f7fafc; padding: 15px; border-left: 4px solid #48bb78; margin-bottom: 15px;'>",
+            # Card container with soft blue glow (reduced width + margin for glow visibility)
+            "<div style='background-color: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; "
+            "box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(32, 185, 226, 0.1); overflow: hidden; "
+            "font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; max-width: 580px; margin: 10px;'>",
+            
+            # Header
+            "<div style='padding: 24px 24px 10px 24px; display: flex; align-items: flex-start; justify-content: space-between;'>",
+            "<div>",
+            "<h3 style='margin: 0; font-size: 18px; font-weight: 700; color: #0f172a;'>",
+            "✅ Booking Verification</h3>",
+            "<p style='margin: 4px 0 0 0; font-size: 13px; color: #64748b;'>Verified via ParkWhiz API</p>",
+            "</div>",
+            # Badge for pass usage
+            f"<span style='display: inline-flex; align-items: center; border-radius: 9999px; "
+            f"padding: 2px 10px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; "
+            f"color: {badge_color}; background-color: {badge_bg};'>{badge_text}</span>",
+            "</div>",
+            
+            # Content
+            "<div style='padding: 0 24px 24px 24px;'>",
         ]
         
-        # Booking ID
+        # Booking details in grid
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Booking ID:</strong> "
-            f"<span style='font-family: monospace; background-color: #edf2f7; padding: 2px 6px; border-radius: 3px;'>"
-            f"{escape(verified_booking.booking_id)}</span></p>"
+            "<div style='background-color: #f8fafc; padding: 16px; border-radius: 6px; margin-top: 8px;'>"
         )
         
-        # Pass Usage Status (highlighted)
-        usage_color = "#48bb78" if verified_booking.pass_used else "#f56565"
-        usage_text = "USED ✓" if verified_booking.pass_used else "NOT USED ✗"
+        # Booking ID (prominent)
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Pass Usage:</strong> "
-            f"<span style='color: {usage_color}; font-weight: bold;'>{usage_text}</span> "
-            f"({escape(verified_booking.pass_usage_status)})</p>"
+            f"<div style='margin-bottom: 12px;'>"
+            f"<div style='font-size: 12px; font-weight: 500; color: #64748b; margin-bottom: 4px;'>Booking ID</div>"
+            f"<div style='font-size: 16px; font-weight: 600; color: #0f172a; font-family: monospace; "
+            f"background-color: #ffffff; padding: 6px 10px; border-radius: 4px; display: inline-block;'>"
+            f"{escape(verified_booking.booking_id)}</div>"
+            f"</div>"
         )
         
-        # Customer Email
+        # Key details in clean rows
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Customer Email:</strong> "
-            f"{escape(verified_booking.customer_email)}</p>"
+            f"<div style='margin-bottom: 10px;'>"
+            f"<div style='font-size: 11px; font-weight: 500; color: #64748b; margin-bottom: 3px;'>Customer Email</div>"
+            f"<div style='font-size: 14px; font-weight: 600; color: #0f172a;'>{escape(verified_booking.customer_email)}</div>"
+            f"</div>"
         )
         
-        # Dates
+        # Dates in two-column
+        html_parts.append("<div style='display: flex; gap: 12px; margin-bottom: 10px;'>")
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Arrival Date:</strong> "
-            f"{escape(verified_booking.arrival_date)}</p>"
+            f"<div style='flex: 1;'>"
+            f"<div style='font-size: 11px; font-weight: 500; color: #64748b; margin-bottom: 3px;'>Arrival</div>"
+            f"<div style='font-size: 14px; font-weight: 600; color: #0f172a;'>{escape(verified_booking.arrival_date.split('T')[0])}</div>"
+            f"</div>"
         )
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Exit Date:</strong> "
-            f"{escape(verified_booking.exit_date)}</p>"
+            f"<div style='flex: 1;'>"
+            f"<div style='font-size: 11px; font-weight: 500; color: #64748b; margin-bottom: 3px;'>Exit</div>"
+            f"<div style='font-size: 14px; font-weight: 600; color: #0f172a;'>{escape(verified_booking.exit_date.split('T')[0])}</div>"
+            f"</div>"
         )
+        html_parts.append("</div>")
         
-        # Location
+        # Location and Amount in two-column
+        html_parts.append("<div style='display: flex; gap: 12px; margin-bottom: 10px;'>")
         if verified_booking.location:
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Location:</strong> "
-                f"{escape(verified_booking.location)}</p>"
+                f"<div style='flex: 1;'>"
+                f"<div style='font-size: 11px; font-weight: 500; color: #64748b; margin-bottom: 3px;'>Location</div>"
+                f"<div style='font-size: 13px; font-weight: 600; color: #0f172a;'>{escape(verified_booking.location)}</div>"
+                f"</div>"
             )
-        
-        # Amount Paid
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Amount Paid:</strong> "
-            f"${verified_booking.amount_paid:.2f}</p>"
+            f"<div style='flex: 1;'>"
+            f"<div style='font-size: 11px; font-weight: 500; color: #64748b; margin-bottom: 3px;'>Amount Paid</div>"
+            f"<div style='font-size: 14px; font-weight: 600; color: #0f172a;'>${verified_booking.amount_paid:.2f}</div>"
+            f"</div>"
         )
-        
-        # Match Confidence
-        confidence_color = {
-            "exact": "#48bb78",
-            "partial": "#ed8936",
-            "weak": "#f56565"
-        }.get(verified_booking.match_confidence, "#718096")
-        
-        html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Match Confidence:</strong> "
-            f"<span style='color: {confidence_color}; font-weight: bold;'>"
-            f"{escape(verified_booking.match_confidence.upper())}</span></p>"
-        )
-        
         html_parts.append("</div>")
         
-        # Add discrepancies section if any found
+        # Pass status and confidence as pills
+        html_parts.append(
+            "<div style='display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0;'>"
+        )
+        
+        # Pass status pill
+        if verified_booking.pass_used:
+            pass_bg = "#fee2e2"
+            pass_color = "#991b1b"
+            pass_icon = "✗"
+        else:
+            pass_bg = "#dcfce7"
+            pass_color = "#166534"
+            pass_icon = "✓"
+        
+        html_parts.append(
+            f"<div style='background-color: {pass_bg}; color: {pass_color}; "
+            f"padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;'>"
+            f"{pass_icon} {escape(verified_booking.pass_usage_status)}</div>"
+        )
+        
+        # Match confidence pill
+        confidence_styles = {
+            "exact": {"bg": "#dcfce7", "color": "#166534"},
+            "partial": {"bg": "#fef3c7", "color": "#92400e"},
+            "weak": {"bg": "#fee2e2", "color": "#991b1b"}
+        }
+        conf_style = confidence_styles.get(verified_booking.match_confidence, {"bg": "#f1f5f9", "color": "#475569"})
+        
+        html_parts.append(
+            f"<div style='background-color: {conf_style['bg']}; color: {conf_style['color']}; "
+            f"padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;'>"
+            f"{escape(verified_booking.match_confidence.capitalize())} Match</div>"
+        )
+        
+        html_parts.append("</div>")  # End pills
+        
+        html_parts.append("</div>")  # End details box
+        
+        # Add discrepancies alert if any found
         if discrepancies:
             html_parts.append(
-                "<div style='background-color: #fff5f5; padding: 15px; border-left: 4px solid #f56565; margin-bottom: 15px;'>"
+                "<div style='border: 1px solid #fca5a5; background-color: #fef2f2; color: #991b1b; "
+                "border-radius: 6px; padding: 12px 16px; margin-top: 16px; font-size: 13px;'>"
+                "<div style='margin-bottom: 4px; font-weight: 600; display: flex; align-items: center; gap: 8px;'>"
+                "⚠️ Discrepancies Detected</div>"
+                "<ul style='margin: 4px 0 0 24px; padding: 0; line-height: 1.5; color: #7f1d1d;'>"
             )
-            html_parts.append(
-                "<h4 style='color: #c53030; margin-top: 0; margin-bottom: 10px;'>⚠️ Discrepancies Found</h4>"
-            )
-            html_parts.append("<ul style='margin: 5px 0; padding-left: 20px;'>")
             for discrepancy in discrepancies:
-                html_parts.append(f"<li style='margin: 3px 0;'>{escape(discrepancy)}</li>")
-            html_parts.append("</ul>")
-            html_parts.append("</div>")
+                html_parts.append(f"<li>{escape(discrepancy)}</li>")
+            html_parts.append("</ul></div>")
         
-        html_parts.append("</div>")
+        html_parts.append("</div>")  # End content
+        
+        # Footer
+        html_parts.append(
+            "<div style='border-top: 1px solid #e2e8f0; background-color: #f8fafc; padding: 12px 24px;'>"
+            f"<div style='font-size: 12px; color: #64748b;'>Verified booking data from ParkWhiz API</div>"
+            "</div>"
+        )
+        
+        html_parts.append("</div>")  # End card
         
         note = "".join(html_parts)
         
@@ -173,71 +243,111 @@ class VerificationNoteGenerator:
         )
         
         html_parts = [
-            "<div style='font-family: Arial, sans-serif; line-height: 1.6;'>",
-            "<h3 style='color: #c53030; margin-bottom: 10px;'>❌ Booking Verification Failed</h3>",
-            "<div style='background-color: #fff5f5; padding: 15px; border-left: 4px solid #f56565; margin-bottom: 15px;'>",
+            # Card container with soft blue glow (reduced width + margin for glow visibility)
+            "<div style='background-color: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; "
+            "box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(32, 185, 226, 0.1); overflow: hidden; "
+            "font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; max-width: 580px; margin: 10px;'>",
+            
+            # Header
+            "<div style='padding: 24px 24px 10px 24px; display: flex; align-items: flex-start; justify-content: space-between;'>",
+            "<div>",
+            "<h3 style='margin: 0; font-size: 18px; font-weight: 700; color: #0f172a;'>",
+            "❌ Verification Failed</h3>",
+            "<p style='margin: 4px 0 0 0; font-size: 13px; color: #64748b;'>Unable to verify booking</p>",
+            "</div>",
+            # Badge - red to match NEEDS REVIEW styling
+            "<span style='display: inline-flex; align-items: center; border-radius: 9999px; "
+            "padding: 2px 10px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; "
+            "border: 1px solid #fca5a5; color: #991b1b; background-color: #fee2e2;'>MANUAL REVIEW</span>",
+            "</div>",
+            
+            # Content
+            "<div style='padding: 0 24px 24px 24px;'>",
         ]
         
-        # Failure reason
+        # Failure reason alert
         html_parts.append(
-            f"<p style='margin: 5px 0;'><strong>Reason:</strong> {escape(failure_reason)}</p>"
+            "<div style='border: 1px solid #fca5a5; background-color: #fef2f2; color: #991b1b; "
+            "border-radius: 6px; padding: 12px 16px; margin-top: 8px; font-size: 13px;'>"
+            f"<div style='font-weight: 600; margin-bottom: 4px;'>Reason</div>"
+            f"<div style='font-weight: 600;'>{escape(failure_reason)}</div>"
+            "</div>"
         )
-        
-        html_parts.append("</div>")
         
         # Customer information attempted
         html_parts.append(
-            "<div style='background-color: #f7fafc; padding: 15px; border-left: 4px solid #718096; margin-bottom: 15px;'>"
-        )
-        html_parts.append(
-            "<h4 style='color: #2d3748; margin-top: 0; margin-bottom: 10px;'>Customer Information Attempted</h4>"
+            "<div style='background-color: #f8fafc; padding: 16px; border-radius: 6px; margin-top: 16px;'>"
+            "<div style='font-size: 14px; font-weight: 600; color: #0f172a; margin-bottom: 12px;'>Customer Information Attempted</div>"
         )
         
         if customer_info.email:
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Email:</strong> {escape(customer_info.email)}</p>"
+                f"<div style='margin-bottom: 8px;'>"
+                f"<div style='font-size: 12px; font-weight: 500; color: #64748b;'>Email</div>"
+                f"<div style='font-size: 14px; color: #0f172a;'>{escape(customer_info.email)}</div>"
+                f"</div>"
             )
         
         if customer_info.name:
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Name:</strong> {escape(customer_info.name)}</p>"
+                f"<div style='margin-bottom: 8px;'>"
+                f"<div style='font-size: 12px; font-weight: 500; color: #64748b;'>Name</div>"
+                f"<div style='font-size: 14px; color: #0f172a;'>{escape(customer_info.name)}</div>"
+                f"</div>"
             )
         
-        if customer_info.arrival_date:
-            html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Arrival Date:</strong> {escape(customer_info.arrival_date)}</p>"
-            )
-        
-        if customer_info.exit_date:
-            html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Exit Date:</strong> {escape(customer_info.exit_date)}</p>"
-            )
+        # Dates in two-column layout
+        if customer_info.arrival_date or customer_info.exit_date:
+            html_parts.append("<div style='display: flex; gap: 16px; margin-bottom: 8px;'>")
+            if customer_info.arrival_date:
+                html_parts.append(
+                    f"<div style='flex: 1;'>"
+                    f"<div style='font-size: 12px; font-weight: 500; color: #64748b;'>Arrival Date</div>"
+                    f"<div style='font-size: 14px; color: #0f172a;'>{escape(customer_info.arrival_date)}</div>"
+                    f"</div>"
+                )
+            if customer_info.exit_date:
+                html_parts.append(
+                    f"<div style='flex: 1;'>"
+                    f"<div style='font-size: 12px; font-weight: 500; color: #64748b;'>Exit Date</div>"
+                    f"<div style='font-size: 14px; color: #0f172a;'>{escape(customer_info.exit_date)}</div>"
+                    f"</div>"
+                )
+            html_parts.append("</div>")
         
         if customer_info.location:
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Location:</strong> {escape(customer_info.location)}</p>"
+                f"<div>"
+                f"<div style='font-size: 12px; font-weight: 500; color: #64748b;'>Location</div>"
+                f"<div style='font-size: 14px; color: #0f172a;'>{escape(customer_info.location)}</div>"
+                f"</div>"
             )
         
-        html_parts.append("</div>")
+        html_parts.append("</div>")  # End customer info box
         
         # Next steps
         html_parts.append(
-            "<div style='background-color: #fffaf0; padding: 15px; border-left: 4px solid #ed8936;'>"
+            "<div style='background-color: #fffaf0; border: 1px solid #fed7aa; border-radius: 6px; "
+            "padding: 12px 16px; margin-top: 16px; font-size: 13px;'>"
+            "<div style='font-weight: 600; color: #92400e; margin-bottom: 8px;'>📋 Next Steps</div>"
+            "<ol style='margin: 0; padding-left: 20px; color: #78350f; line-height: 1.6;'>"
+            "<li>Verify customer information directly with ParkWhiz system</li>"
+            "<li>Check for alternate email addresses or booking methods</li>"
+            "<li>Contact customer if information is unclear or missing</li>"
+            "</ol>"
+            "</div>"
         )
-        html_parts.append(
-            "<h4 style='color: #7c2d12; margin-top: 0; margin-bottom: 10px;'>📋 Next Steps</h4>"
-        )
-        html_parts.append(
-            "<p style='margin: 5px 0;'>This ticket requires manual review. Please:</p>"
-        )
-        html_parts.append("<ol style='margin: 5px 0; padding-left: 20px;'>")
-        html_parts.append("<li>Verify customer information directly with ParkWhiz system</li>")
-        html_parts.append("<li>Check for alternate email addresses or booking methods</li>")
-        html_parts.append("<li>Contact customer if information is unclear or missing</li>")
-        html_parts.append("</ol>")
-        html_parts.append("</div>")
         
-        html_parts.append("</div>")
+        html_parts.append("</div>")  # End content
+        
+        # Footer
+        html_parts.append(
+            "<div style='border-top: 1px solid #e2e8f0; background-color: #f8fafc; padding: 12px 24px;'>"
+            "<div style='font-size: 12px; color: #64748b;'>Manual verification required</div>"
+            "</div>"
+        )
+        
+        html_parts.append("</div>")  # End card
         
         note = "".join(html_parts)
         
@@ -366,75 +476,105 @@ class VerificationNoteGenerator:
         )
         
         html_parts = [
-            "<div style='font-family: Arial, sans-serif; line-height: 1.6;'>",
-            f"<h3 style='color: #2c5282; margin-bottom: 10px;'>🔍 Multiple Bookings Found ({len(bookings)})</h3>",
-            "<div style='background-color: #fffaf0; padding: 15px; border-left: 4px solid #ed8936; margin-bottom: 15px;'>",
-            "<p style='margin: 5px 0;'>Multiple bookings match the customer's information. "
-            "Please review all bookings below and select the correct one.</p>",
+            # Card container with soft blue glow (reduced width + margin for glow visibility)
+            "<div style='background-color: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; "
+            "box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 0 0 3px rgba(32, 185, 226, 0.1); overflow: hidden; "
+            "font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; max-width: 580px; margin: 10px;'>",
+            
+            # Header
+            "<div style='padding: 24px 24px 10px 24px; display: flex; align-items: flex-start; justify-content: space-between;'>",
+            "<div>",
+            "<h3 style='margin: 0; font-size: 18px; font-weight: 700; color: #0f172a;'>",
+            f"🔍 Multiple Bookings Found</h3>",
+            "<p style='margin: 4px 0 0 0; font-size: 13px; color: #64748b;'>Review and select correct booking</p>",
             "</div>",
+            # Badge with count - red to match NEEDS REVIEW styling
+            f"<span style='display: inline-flex; align-items: center; border-radius: 9999px; "
+            f"padding: 2px 10px; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; "
+            f"border: 1px solid #fca5a5; color: #991b1b; background-color: #fee2e2;'>{len(bookings)} MATCHES</span>",
+            "</div>",
+            
+            # Content
+            "<div style='padding: 0 24px 24px 24px;'>",
+            
+            # Warning message
+            "<div style='background-color: #fffaf0; border: 1px solid #fed7aa; border-radius: 6px; "
+            "padding: 12px 16px; margin-top: 8px; font-size: 13px; color: #78350f;'>"
+            "Multiple bookings match the customer's information. Please review all options below.</div>",
         ]
         
-        # List each booking
+        # List each booking in compact cards
         for i, booking in enumerate(bookings, 1):
-            # Determine border color based on confidence
-            border_color = {
-                "exact": "#48bb78",
-                "partial": "#ed8936",
-                "weak": "#f56565"
-            }.get(booking.match_confidence, "#718096")
+            # Determine accent color based on confidence
+            accent_color = {
+                "exact": "#16a34a",
+                "partial": "#d97706",
+                "weak": "#dc2626"
+            }.get(booking.match_confidence, "#64748b")
             
             html_parts.append(
-                f"<div style='background-color: #f7fafc; padding: 15px; border-left: 4px solid {border_color}; margin-bottom: 10px;'>"
-            )
-            html_parts.append(
-                f"<h4 style='color: #2d3748; margin-top: 0; margin-bottom: 10px;'>Booking #{i}</h4>"
+                f"<div style='background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid {accent_color}; "
+                f"border-radius: 6px; padding: 12px; margin-top: 12px;'>"
             )
             
-            # Booking details
+            # Booking header with ID and confidence
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Booking ID:</strong> "
-                f"<span style='font-family: monospace; background-color: #edf2f7; padding: 2px 6px; border-radius: 3px;'>"
-                f"{escape(booking.booking_id)}</span></p>"
+                f"<div style='display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;'>"
+                f"<div style='font-size: 12px; font-weight: 600; color: #64748b;'>BOOKING #{i}</div>"
+                f"<div style='font-size: 11px; font-weight: 600; color: {accent_color};'>"
+                f"{escape(booking.match_confidence.capitalize())} Match</div>"
+                f"</div>"
             )
             
-            # Pass usage
-            usage_color = "#48bb78" if booking.pass_used else "#f56565"
-            usage_text = "USED ✓" if booking.pass_used else "NOT USED ✗"
+            # Booking ID (prominent)
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Pass Usage:</strong> "
-                f"<span style='color: {usage_color}; font-weight: bold;'>{usage_text}</span></p>"
+                f"<div style='font-size: 15px; font-weight: 600; color: #0f172a; font-family: monospace; "
+                f"margin-bottom: 8px;'>{escape(booking.booking_id)}</div>"
             )
             
+            # Pass usage with icon
+            usage_icon = (
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5" '
+                'stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle>'
+                '<line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>'
+                if booking.pass_used else
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" '
+                'stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>'
+                '<polyline points="22 4 12 14.01 9 11.01"></polyline></svg>'
+            )
+            usage_color = "#dc2626" if booking.pass_used else "#16a34a"
+            usage_text = "Pass Used" if booking.pass_used else "Pass Not Used"
+            
             html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Dates:</strong> "
-                f"{escape(booking.arrival_date)} to {escape(booking.exit_date)}</p>"
+                f"<div style='display: flex; align-items: center; gap: 6px; margin-bottom: 8px;'>"
+                f"{usage_icon}"
+                f"<span style='font-size: 13px; font-weight: 600; color: {usage_color};'>{usage_text}</span>"
+                f"</div>"
             )
             
+            # Compact details grid
+            html_parts.append("<div style='font-size: 12px; color: #64748b; line-height: 1.6;'>")
+            html_parts.append(
+                f"<div><strong>Dates:</strong> {escape(booking.arrival_date.split('T')[0])} to "
+                f"{escape(booking.exit_date.split('T')[0])}</div>"
+            )
             if booking.location:
-                html_parts.append(
-                    f"<p style='margin: 5px 0;'><strong>Location:</strong> {escape(booking.location)}</p>"
-                )
-            
-            html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Amount:</strong> ${booking.amount_paid:.2f}</p>"
-            )
-            
-            # Match confidence
-            confidence_color = {
-                "exact": "#48bb78",
-                "partial": "#ed8936",
-                "weak": "#f56565"
-            }.get(booking.match_confidence, "#718096")
-            
-            html_parts.append(
-                f"<p style='margin: 5px 0;'><strong>Match:</strong> "
-                f"<span style='color: {confidence_color}; font-weight: bold;'>"
-                f"{escape(booking.match_confidence.upper())}</span></p>"
-            )
-            
+                html_parts.append(f"<div><strong>Location:</strong> {escape(booking.location)}</div>")
+            html_parts.append(f"<div><strong>Amount:</strong> ${booking.amount_paid:.2f}</div>")
             html_parts.append("</div>")
+            
+            html_parts.append("</div>")  # End booking card
         
-        html_parts.append("</div>")
+        html_parts.append("</div>")  # End content
+        
+        # Footer
+        html_parts.append(
+            "<div style='border-top: 1px solid #e2e8f0; background-color: #f8fafc; padding: 12px 24px;'>"
+            f"<div style='font-size: 12px; color: #64748b;'>Found {len(bookings)} matching bookings via ParkWhiz API</div>"
+            "</div>"
+        )
+        
+        html_parts.append("</div>")  # End card
         
         note = "".join(html_parts)
         

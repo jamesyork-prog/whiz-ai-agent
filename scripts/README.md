@@ -456,7 +456,7 @@ Creates a timestamped backup of the WhizDB PostgreSQL database before performing
 
 **From inside Docker container:**
 ```bash
-docker-compose exec whiz-agent bash /app/scripts/backup_database.sh
+docker-compose exec parlant bash /app/scripts/backup_database.sh
 ```
 
 ### Backup Location
